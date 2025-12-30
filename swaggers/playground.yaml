@@ -1,0 +1,1254 @@
+openapi: 3.0.3
+info:
+  title: Kotless Playground API
+  description: |
+    API for the Kotless Playground showcasing AWS services integration.
+    This API demonstrates examples for:
+    - S3: File storage and management
+    - DynamoDB: NoSQL database operations
+    - REST: Standard REST API patterns
+    - GameLift: Matchmaking and game session management
+  version: 1.0.0
+  contact:
+    name: Kotless Playground API Support
+    email: mamaorha@gmail.com
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:9090
+    description: Development server
+  - url: https://example.com
+    description: Production server
+
+tags:
+  - name: S3
+    description: Amazon S3 storage operations - file upload, download, and management
+  - name: DynamoDB
+    description: Amazon DynamoDB database operations - CRUD operations and queries
+  - name: REST
+    description: Standard REST API endpoints demonstrating best practices
+  - name: GameLift
+    description: Amazon GameLift matchmaking and game session management
+
+paths:
+  # S3 Examples
+  /s3/files:
+    post:
+      tags:
+        - S3
+      summary: Upload a file to S3
+      description: Uploads a file to the configured S3 bucket
+      operationId: uploadFile
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: Authorization
+          in: header
+          required: true
+          schema:
+            type: string
+          description: Bearer token for authentication (e.g., "Bearer <token>")
+        - name: path
+          in: query
+          required: true
+          schema:
+            type: string
+          description: The S3 object key/path where the file will be stored
+          example: "uploads/user-123/document.pdf"
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: byte
+              description: The file content as a byte array
+      responses:
+        '204':
+          description: File uploaded successfully
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    get:
+      tags:
+        - S3
+      summary: Get presigned URL for file download
+      description: Generates a presigned URL for downloading a file from S3
+      operationId: getFileUrl
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: Authorization
+          in: header
+          required: true
+          schema:
+            type: string
+          description: Bearer token for authentication (e.g., "Bearer <token>")
+        - name: path
+          in: query
+          required: true
+          schema:
+            type: string
+          description: The S3 object key/path
+          example: "uploads/user-123/document.pdf"
+        - name: expirationMinutes
+          in: query
+          schema:
+            type: integer
+            default: 60
+          description: URL expiration time in minutes
+          example: 60
+      responses:
+        '200':
+          description: Presigned URL generated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FileUrlResponse'
+              example:
+                url: "https://my-bucket.s3.amazonaws.com/uploads/user-123/document.pdf?X-Amz-Algorithm=..."
+                path: "uploads/user-123/document.pdf"
+                expiresIn: 3600
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /s3/files/path:
+    delete:
+      tags:
+        - S3
+      summary: Delete a file from S3
+      description: Deletes a file from the S3 bucket
+      operationId: deleteFile
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: Authorization
+          in: header
+          required: true
+          schema:
+            type: string
+          description: Bearer token for authentication (e.g., "Bearer <token>")
+        - name: path
+          in: query
+          required: true
+          schema:
+            type: string
+          description: The S3 object key/path to delete
+          example: "uploads/user-123/document.pdf"
+      responses:
+        '204':
+          description: File deleted successfully
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # DynamoDB Examples
+  /dynamodb/items:
+    post:
+      tags:
+        - DynamoDB
+      summary: Create an item in DynamoDB
+      description: Creates a new item in the DynamoDB table
+      operationId: createItem
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: Authorization
+          in: header
+          required: true
+          schema:
+            type: string
+          description: Bearer token for authentication (e.g., "Bearer <token>")
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DynamoDBItem'
+            example:
+              id: "user-123"
+              name: "John Doe"
+              email: "john.doe@example.com"
+              createdAt: 1705315800000
+              attributes:
+                age: 30
+                city: "New York"
+      responses:
+        '201':
+          description: Item created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DynamoDBItem'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    get:
+      tags:
+        - DynamoDB
+      summary: Query items from DynamoDB
+      description: Queries items from DynamoDB using partition key and optional sort key
+      operationId: queryItems
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: Authorization
+          in: header
+          required: true
+          schema:
+            type: string
+          description: Bearer token for authentication (e.g., "Bearer <token>")
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+          description: Maximum number of items to return
+          example: 100
+      responses:
+        '200':
+          description: Query successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QueryItemsResponse'
+              example:
+                items:
+                  - id: "user-123"
+                    name: "John Doe"
+                    email: "john.doe@example.com"
+                    createdAt: 1705315800000
+                count: 1
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /dynamodb/items/id:
+    get:
+      tags:
+        - DynamoDB
+      summary: Get an item by ID
+      description: Retrieves a single item from DynamoDB by its ID
+      operationId: getItem
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: Authorization
+          in: header
+          required: true
+          schema:
+            type: string
+          description: Bearer token for authentication (e.g., "Bearer <token>")
+        - name: id
+          in: query
+          required: true
+          schema:
+            type: string
+          description: The item ID (partition key)
+          example: "user-123"
+      responses:
+        '200':
+          description: Item retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DynamoDBItem'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    put:
+      tags:
+        - DynamoDB
+      summary: Update an item in DynamoDB
+      description: Updates an existing item in DynamoDB
+      operationId: updateItem
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: Authorization
+          in: header
+          required: true
+          schema:
+            type: string
+          description: Bearer token for authentication (e.g., "Bearer <token>")
+        - name: id
+          in: query
+          required: true
+          schema:
+            type: string
+          description: The item ID to update
+          example: "user-123"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DynamoDBItemUpdate'
+            example:
+              name: "John Doe Updated"
+              email: "john.doe.updated@example.com"
+              attributes:
+                age: 31
+                city: "San Francisco"
+      responses:
+        '200':
+          description: Item updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DynamoDBItem'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      tags:
+        - DynamoDB
+      summary: Delete an item from DynamoDB
+      description: Deletes an item from DynamoDB by its ID
+      operationId: deleteItem
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: Authorization
+          in: header
+          required: true
+          schema:
+            type: string
+          description: Bearer token for authentication (e.g., "Bearer <token>")
+        - name: id
+          in: query
+          required: true
+          schema:
+            type: string
+          description: The item ID to delete
+          example: "user-123"
+      responses:
+        '204':
+          description: Item deleted successfully
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # REST Examples
+  /rest/pets:
+    get:
+      tags:
+        - REST
+      summary: List all pets
+      description: Retrieves a list of all pets with cursor-based pagination support
+      operationId: listPets
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: Authorization
+          in: header
+          required: true
+          schema:
+            type: string
+          description: Bearer token for authentication (e.g., "Bearer <token>")
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int64
+          description: Optional cursor - returns pets with ID greater than this value
+          example: 123
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            default: 20
+          description: Number of items per page
+          example: 20
+      responses:
+        '200':
+          description: List of pets retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PetListResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    post:
+      tags:
+        - REST
+      summary: Create a new pet
+      description: Creates a new pet with the provided information
+      operationId: createPet
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: Authorization
+          in: header
+          required: true
+          schema:
+            type: string
+          description: Bearer token for authentication (e.g., "Bearer <token>")
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PetCreateRequest'
+            example:
+              name: "Fluffy"
+              type: "cat"
+              breed: "Persian"
+              age: 3
+      responses:
+        '201':
+          description: Pet created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Pet'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /rest/pets/petId:
+    get:
+      tags:
+        - REST
+      summary: Get pet by ID
+      description: Retrieves a specific pet by their ID
+      operationId: getPet
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: Authorization
+          in: header
+          required: true
+          schema:
+            type: string
+          description: Bearer token for authentication (e.g., "Bearer <token>")
+        - name: petId
+          in: query
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: The pet ID
+          example: 123
+      responses:
+        '200':
+          description: Pet retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Pet'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    put:
+      tags:
+        - REST
+      summary: Update pet
+      description: Updates an existing pet's information
+      operationId: updatePet
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: Authorization
+          in: header
+          required: true
+          schema:
+            type: string
+          description: Bearer token for authentication (e.g., "Bearer <token>")
+        - name: petId
+          in: query
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: The pet ID to update
+          example: 123
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PetUpdateRequest'
+            example:
+              name: "Fluffy Updated"
+              age: 4
+              breed: "Persian"
+      responses:
+        '200':
+          description: Pet updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Pet'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      tags:
+        - REST
+      summary: Delete pet
+      description: Deletes a pet by their ID
+      operationId: deletePet
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: Authorization
+          in: header
+          required: true
+          schema:
+            type: string
+          description: Bearer token for authentication (e.g., "Bearer <token>")
+        - name: petId
+          in: query
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: The pet ID to delete
+          example: 123
+      responses:
+        '204':
+          description: Pet deleted successfully
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # GameLift Examples
+  /gamelift/matchmaking:
+    post:
+      tags:
+        - GameLift
+      summary: Start matchmaking
+      description: Initiates a matchmaking request for a player
+      operationId: startMatchmaking
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: Authorization
+          in: header
+          required: true
+          schema:
+            type: string
+          description: Bearer token for authentication (e.g., "Bearer <token>")
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MatchmakingRequest'
+            example:
+              matchmakingConfigurationName: "RankMatchmakingWithExpansion"
+              playerId: "player-123"
+              rank: 1500.5
+      responses:
+        '200':
+          description: Matchmaking started successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MatchmakingResponse'
+              example:
+                ticketId: "ticket-abc-123-def-456"
+                status: "SEARCHING"
+                message: "Matchmaking ticket created successfully"
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /gamelift/matchmaking/ticketId:
+    get:
+      tags:
+        - GameLift
+      summary: Get matchmaking ticket status
+      description: Retrieves the current status of a matchmaking ticket
+      operationId: getMatchmakingStatus
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: Authorization
+          in: header
+          required: true
+          schema:
+            type: string
+          description: Bearer token for authentication (e.g., "Bearer <token>")
+        - name: ticketId
+          in: query
+          required: true
+          schema:
+            type: string
+          description: The matchmaking ticket ID
+          example: "ticket-abc-123-def-456"
+      responses:
+        '200':
+          description: Matchmaking status retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MatchmakingStatusResponse'
+              example:
+                ticketId: "ticket-abc-123-def-456"
+                status: "COMPLETED"
+                players:
+                  - playerId: "player-123"
+                    rank: 1500.5
+                  - playerId: "player-456"
+                    rank: 1520.0
+                gameSessionInfo:
+                  gameSessionId: "game-session-789"
+                  ipAddress: "192.168.1.100"
+                  port: 7777
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      tags:
+        - GameLift
+      summary: Stop matchmaking
+      description: Cancels an active matchmaking ticket
+      operationId: stopMatchmaking
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: Authorization
+          in: header
+          required: true
+          schema:
+            type: string
+          description: Bearer token for authentication (e.g., "Bearer <token>")
+        - name: ticketId
+          in: query
+          required: true
+          schema:
+            type: string
+          description: The matchmaking ticket ID to cancel
+          example: "ticket-abc-123-def-456"
+      responses:
+        '204':
+          description: Matchmaking cancelled successfully
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /gamelift/matchmaking/ticketId/accept:
+    post:
+      tags:
+        - GameLift
+      summary: Accept match
+      description: Accepts a matchmaking match for the specified players
+      operationId: acceptMatch
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: Authorization
+          in: header
+          required: true
+          schema:
+            type: string
+          description: Bearer token for authentication (e.g., "Bearer <token>")
+        - name: ticketId
+          in: query
+          required: true
+          schema:
+            type: string
+          description: The matchmaking ticket ID
+          example: "ticket-abc-123-def-456"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - playerIds
+              properties:
+                playerIds:
+                  type: array
+                  items:
+                    type: string
+                  description: Array of player IDs accepting the match
+                  example: ["player-123", "player-456"]
+      responses:
+        '204':
+          description: Match accepted successfully
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /gamelift/matchmaking/ticketId/reject:
+    post:
+      tags:
+        - GameLift
+      summary: Reject match
+      description: Rejects a matchmaking match for the specified players
+      operationId: rejectMatch
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: Authorization
+          in: header
+          required: true
+          schema:
+            type: string
+          description: Bearer token for authentication (e.g., "Bearer <token>")
+        - name: ticketId
+          in: query
+          required: true
+          schema:
+            type: string
+          description: The matchmaking ticket ID
+          example: "ticket-abc-123-def-456"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - playerIds
+              properties:
+                playerIds:
+                  type: array
+                  items:
+                    type: string
+                  description: Array of player IDs rejecting the match
+                  example: ["player-123"]
+      responses:
+        '204':
+          description: Match rejected successfully
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token for authentication
+
+  schemas:
+    FileUploadResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          example: "File uploaded successfully"
+        path:
+          type: string
+          example: "uploads/user-123/document.pdf"
+        bucket:
+          type: string
+          example: "my-kotless-playground-bucket"
+    FileUrlResponse:
+      type: object
+      properties:
+        url:
+          type: string
+          format: uri
+          example: "https://my-bucket.s3.amazonaws.com/uploads/user-123/document.pdf?X-Amz-Algorithm=..."
+        path:
+          type: string
+          example: "uploads/user-123/document.pdf"
+        expiresIn:
+          type: integer
+          description: Expiration time in seconds
+          example: 3600
+    DynamoDBItem:
+      type: object
+      required:
+        - id
+      properties:
+        id:
+          type: string
+          description: Partition key
+          example: "user-123"
+        name:
+          type: string
+          example: "John Doe"
+        email:
+          type: string
+          format: email
+          example: "john.doe@example.com"
+        createdAt:
+          type: integer
+          format: int64
+          description: Creation timestamp in milliseconds since epoch
+          example: 1705315800000
+        attributes:
+          type: object
+          additionalProperties: true
+          example:
+            age: 30
+            city: "New York"
+    DynamoDBItemUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          example: "John Doe Updated"
+        email:
+          type: string
+          format: email
+          example: "john.doe.updated@example.com"
+        attributes:
+          type: object
+          additionalProperties: true
+          example:
+            age: 31
+            city: "San Francisco"
+    QueryItemsResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/DynamoDBItem'
+        count:
+          type: integer
+          description: Number of items returned
+          example: 1
+    Pet:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 123
+        name:
+          type: string
+          example: "Fluffy"
+        type:
+          type: string
+          example: "cat"
+        breed:
+          type: string
+          example: "Persian"
+        age:
+          type: integer
+          example: 3
+        createdAt:
+          type: integer
+          format: int64
+          description: Creation timestamp in milliseconds since epoch
+          example: 1705315800000
+        updatedAt:
+          type: integer
+          format: int64
+          description: Last update timestamp in milliseconds since epoch
+          example: 1705315800000
+    PetCreateRequest:
+      type: object
+      required:
+        - name
+        - type
+      properties:
+        name:
+          type: string
+          example: "Fluffy"
+        type:
+          type: string
+          example: "cat"
+        breed:
+          type: string
+          example: "Persian"
+        age:
+          type: integer
+          example: 3
+    PetUpdateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          example: "Fluffy Updated"
+        type:
+          type: string
+          example: "cat"
+        breed:
+          type: string
+          example: "Persian"
+        age:
+          type: integer
+          example: 4
+    PetListResponse:
+      type: object
+      properties:
+        pets:
+          type: array
+          items:
+            $ref: '#/components/schemas/Pet'
+        nextCursor:
+          type: integer
+          format: int64
+          description: The ID of the last pet in the response. Use this as the 'cursor' parameter in the next request to get the next page.
+          example: 143
+          nullable: true
+        pageSize:
+          type: integer
+          description: Number of items per page
+          example: 20
+    MatchmakingRequest:
+      type: object
+      required:
+        - matchmakingConfigurationName
+        - playerId
+        - rank
+      properties:
+        matchmakingConfigurationName:
+          type: string
+          description: The name of the matchmaking configuration
+          example: "RankMatchmakingWithExpansion"
+        playerId:
+          type: string
+          description: The unique identifier for the player
+          example: "player-123"
+        rank:
+          type: number
+          format: double
+          description: The player's rank/rating
+          example: 1500.5
+    MatchmakingResponse:
+      type: object
+      properties:
+        ticketId:
+          type: string
+          description: The matchmaking ticket ID
+          example: "ticket-abc-123-def-456"
+        status:
+          type: string
+          enum: [SEARCHING, QUEUED, PLACING, COMPLETED, FAILED, CANCELLED]
+          example: "SEARCHING"
+        message:
+          type: string
+          example: "Matchmaking ticket created successfully"
+    MatchmakingStatusResponse:
+      type: object
+      properties:
+        ticketId:
+          type: string
+          example: "ticket-abc-123-def-456"
+        status:
+          type: string
+          enum: [SEARCHING, QUEUED, PLACING, COMPLETED, FAILED, CANCELLED, REQUIRES_ACCEPTANCE, TIMED_OUT, Unknown]
+          example: "COMPLETED"
+        players:
+          type: array
+          items:
+            type: object
+            properties:
+              playerId:
+                type: string
+                example: "player-123"
+              rank:
+                type: number
+                format: double
+                example: 1500.5
+        gameSessionInfo:
+          type: object
+          properties:
+            gameSessionId:
+              type: string
+              example: "game-session-789"
+            ipAddress:
+              type: string
+              format: ipv4
+              example: "192.168.1.100"
+            port:
+              type: integer
+              example: 7777
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          example: "Unauthorized"
+        message:
+          type: string
+          example: "Invalid or expired token"

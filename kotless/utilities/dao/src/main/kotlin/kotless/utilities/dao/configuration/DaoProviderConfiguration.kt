@@ -1,0 +1,14 @@
+package kotless.utilities.dao.configuration
+
+import kotless.utilities.auth.SecretManager
+import kotless.utilities.dao.DaoConnectionProvider
+import org.springframework.context.annotation.Bean
+import org.springframework.context.annotation.Configuration
+
+@Configuration(proxyBeanMethods = false)
+open class DaoProviderConfiguration {
+    @Bean
+    open fun daoConnectionProvider(secretManager: SecretManager): DaoConnectionProvider {
+        return DaoConnectionProvider(secretManager = secretManager)
+    }
+}
