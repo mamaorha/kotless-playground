@@ -1,5 +1,5 @@
 # Kotless Playground
-this is a showcase on how to use "kotless" to the fullest :)
+this is a showcase on how to use ["kotless"](https://github.com/mamaorha/Kotless) to the fullest :)
 
 * if you wish to "copy-paste" things i suggest to look for "CHANGE_ME" in the project and plug in your specific values according to your needs.
 * this project uses the default "Aws" implementations for things like "Storage/Authentication/etc" but you can override it with your own implementation using Bean override, for example under "PlaygroundConfiguration" you can add 

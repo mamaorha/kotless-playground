@@ -21,7 +21,6 @@ dependencies {
     implementation("javax.validation", "validation-api", "2.0.1.Final")
     implementation("javax.xml.bind", "jaxb-api", "2.1")
     implementation("io.kotless", "spring-boot-lang", "0.3.4")
-    api("software.amazon.awssdk", "gamelift", "2.23.15")
     api(project(":kotless:utilities:auth"))
     api(project(":kotless:utilities:cache"))
     api(project(":kotless:utilities:rest"))
