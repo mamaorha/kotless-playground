@@ -37,7 +37,7 @@ class DynamoDbExampleRest(
             either {
                 val exampleDto = DynamoExampleDao.upsert(
                     exampleDto = ExampleDto(
-                        username = authContext.username,
+                        username = authContext.payload.username,
                         id = body.id,
                         cas = null, //we want to make sure "insert"
                         data = Example(
@@ -61,7 +61,7 @@ class DynamoDbExampleRest(
     ): ResponseEntity<Void> {
         return authWrapper.withAuth(token = authorization) { authContext ->
             either {
-                DynamoExampleDao.delete(username = authContext.username, id = id).bind()
+                DynamoExampleDao.delete(username = authContext.payload.username, id = id).bind()
                 ResponseEntity.noContent().build<Void>()
             }
         }.flatten().getOrThrow()
@@ -75,7 +75,7 @@ class DynamoDbExampleRest(
         return authWrapper.withAuth(token = authorization) { authContext ->
             either {
                 val exampleDto =
-                    DynamoExampleDao.get(username = authContext.username, id = id).asNotFound("example").bind()
+                    DynamoExampleDao.get(username = authContext.payload.username, id = id).asNotFound("example").bind()
 
                 ResponseEntity.ok(exampleDto.asResource())
             }
@@ -88,7 +88,7 @@ class DynamoDbExampleRest(
         limit: @Valid Int?
     ): ResponseEntity<QueryItemsResponse> {
         return authWrapper.withAuth(token = authorization) { authContext ->
-            val exampleDtoList = DynamoExampleDao.query(username = authContext.username, limit = limit)
+            val exampleDtoList = DynamoExampleDao.query(username = authContext.payload.username, limit = limit)
 
             ResponseEntity.ok(QueryItemsResponse().items(exampleDtoList.map { it.asResource() }))
         }.getOrThrow()
@@ -108,7 +108,7 @@ class DynamoDbExampleRest(
         return authWrapper.withAuth(token = authorization) { authContext ->
             either {
                 val exampleDto = DynamoExampleDao.upsert(
-                    username = authContext.username,
+                    username = authContext.payload.username,
                     id = id
                 ) { currDto ->
                     currDto?.copy(

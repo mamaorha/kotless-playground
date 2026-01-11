@@ -1,36 +1,109 @@
 # Auth Utility
 
-The Auth utility provides authentication and authorization functionality for Kotless applications, supporting AWS Cognito JWT tokens and server-signed tokens.
+The Auth utility provides authentication and authorization functionality for Kotless applications, supporting AWS Cognito JWT tokens, Google OAuth tokens, manual-signed tokens, and server-signed tokens.
 
 ## Features
 
-- **JWT Token Verification**: Verify and decode JWT tokens from AWS Cognito
+- **JWT Token Verification**: Verify and decode JWT tokens from AWS Cognito, Google OAuth, or manual signing
 - **Server-Signed Tokens**: Create and verify server-signed tokens for internal service communication
-- **Auth Context**: Extract user information from tokens and build authentication context
+- **Auth Context**: Extract user information from tokens and build authentication context with payload
 - **Secret Management**: Interface for retrieving secrets (e.g., from AWS Secrets Manager)
+
+## Architecture
+
+The auth utility follows a layered architecture:
+
+1. **AuthWrapper** (Interface): Defines the contract for authentication operations
+2. **JwtAuthWrapper** (Abstract Class): Base implementation for JWT-based authentication
+3. **Provider Implementations**: `AwsAuthWrapper`, `GoogleAuthWrapper`, `ManualAuthWrapper`
 
 ## Components
 
 ### AuthWrapper
 
-Abstract base class for authentication wrappers. Provides methods to verify tokens and extract user attributes.
+Interface that defines the authentication contract. All authentication wrappers implement this interface.
 
 **Key Methods:**
 - `withAuth(token: String, f: (AuthContext) -> T)`: Execute a function with authentication context
+  - Automatically handles "Bearer " prefix if present
+  - Returns `Either<AuthException, T>` for error handling
 - `withServerAuth(token: String, f: (AuthContext) -> T)`: Execute a function requiring server authentication
-- `buildServerSignToken(username: String, server: String)`: Create a server-signed token
+  - Verifies that the token is a server-signed token (starts with "SRV.")
+  - Returns `Either<AuthException, T>` for error handling
+- `buildServerSignToken(server: String, payload: AuthContextPayload)`: Create a server-signed token
+  - Tokens are prefixed with "SRV." for identification
+  - Uses HMAC256 algorithm with secret from `SecretManager`
+
+### JwtAuthWrapper
+
+Abstract base class that implements `AuthWrapper` and provides JWT token verification logic. This class handles:
+- Token verification (both regular JWT and server-signed tokens)
+- Token prefix handling ("Bearer " and "SRV.")
+- AuthContext building from decoded JWT tokens
+- Automatic retry for tokens with clock skew issues
+
+**Constructor Parameters:**
+- `usernameAttributeKey: String`: The claim key used to identify the username in JWT tokens
+- `serverSignIssuer: String`: The issuer value for server-signed tokens
+
+**Abstract Methods to Implement:**
+- `jwtVerifier(): JWTVerifier`: Return the JWT verifier for validating regular JWT tokens
+- `serverSignAlgorithm(): Algorithm`: Return the HMAC256 algorithm for server-signed tokens
 
 ### AwsAuthWrapper
 
-AWS-specific implementation of `AuthWrapper` that integrates with AWS Cognito.
+AWS Cognito implementation that extends `JwtAuthWrapper`.
+
+**Features:**
+- Uses RSA256 algorithm with keys from AWS Cognito JWKS endpoint
+- Uses `cognito:username` as the username attribute
+- Provides `getUserAttributes(username: String)` method for retrieving user attributes from Cognito (optional, not part of interface)
 
 **Spring Configuration:**
 - `AuthConfiguration` automatically provides `AuthWrapper` and `SecretManager` as Spring beans
-- You can inject `AuthWrapper` directly in your services - no need to build it manually
+- Default implementation uses `AwsAuthWrapper` if no custom bean is provided
 
 **Configuration Required:**
 - AWS Cognito User Pool ID (configured via `AwsConstants.awsUserPoolsId`)
 - AWS Region (configured via `AwsConstants.awsRegion`)
+- Server Sign Secret (stored in AWS Secrets Manager with key `SERVER_SIGN_SECRET`)
+
+**Usage:**
+
+### GoogleAuthWrapper
+
+Google OAuth implementation that extends `JwtAuthWrapper`.
+
+**Features:**
+- Uses RSA256 algorithm with keys from Google's OAuth2 certificate endpoint
+- Uses `sub` as the username attribute (extracted from token claims)
+
+**Usage:**
+
+**Spring Configuration:**
+To use `GoogleAuthWrapper` instead of `AwsAuthWrapper`, define it as a Spring bean:
+
+```kotlin
+@Configuration
+class GoogleAuthConfiguration {
+    @Bean
+    fun authWrapper(secretManager: SecretManager): AuthWrapper {
+        return GoogleAuthWrapper.build(secretManager)
+    }
+}
+```
+
+### ManualAuthWrapper
+
+Manual authentication implementation that extends `JwtAuthWrapper`. Useful for custom token signing or testing.
+
+**Features:**
+- Uses HMAC256 algorithm with secret from `SecretManager` (key: `MANUAL_SIGN_SECRET`)
+- Uses `username` as the username attribute
+- Provides `manualSign(username: String)` method for creating manually-signed tokens
+
+**Configuration Required:**
+- Manual Sign Secret (stored in AWS Secrets Manager with key `MANUAL_SIGN_SECRET`)
 - Server Sign Secret (stored in AWS Secrets Manager with key `SERVER_SIGN_SECRET`)
 
 ### SecretManager
@@ -47,6 +120,7 @@ AWS Secrets Manager implementation that retrieves secrets from AWS Secrets Manag
 
 ```kotlin
 import kotless.utilities.auth.AuthWrapper
+import kotless.utilities.auth.data.AuthContext
 import kotless.utilities.common.Either
 
 // Inject AuthWrapper as a Spring bean (provided by AuthConfiguration)
@@ -56,9 +130,8 @@ class AuthService(
     // Use authentication in a handler
     fun handleRequest(token: String): Either<AuthException, String> {
         return authWrapper.withAuth(token) { authContext ->
-            // Access user information
-            val username = authContext.username
-            val email = authContext.email
+            // Access user information from payload
+            val username = authContext.payload.username
             
             // Your business logic here
             "Hello, $username!"
@@ -71,6 +144,7 @@ class AuthService(
 
 ```kotlin
 import kotless.utilities.auth.AuthWrapper
+import kotless.utilities.auth.data.AuthContextPayload
 import kotless.utilities.common.Either
 
 class AuthService(
@@ -78,16 +152,20 @@ class AuthService(
 ) {
     // Create a server-signed token
     fun createServerToken(username: String, server: String): String {
+        val payload = AuthContextPayload(
+            username = username
+            // Add more fields as needed
+        )
         return authWrapper.buildServerSignToken(
-            username = username,
-            server = server
+            server = server,
+            payload = payload
         )
     }
     
     // Verify server token in another service
     fun verifyServerToken(token: String): Either<AuthException, String?> {
         return authWrapper.withServerAuth(token) { authContext ->
-            // This will only succeed if the token has server attribute
+            // This will only succeed if the token is server-signed
             authContext.server // Returns server name
         }
     }
@@ -96,40 +174,44 @@ class AuthService(
 
 ### Custom AuthWrapper Implementation
 
-If you need a custom `AuthWrapper` implementation, you should define it as a Spring bean via configuration:
+If you need a custom `AuthWrapper` implementation, you can either:
 
+1. **Extend JwtAuthWrapper** (recommended for JWT-based auth):
 ```kotlin
-import kotless.utilities.auth.AuthWrapper
-import kotless.utilities.auth.data.AuthContext
+import kotless.utilities.auth.JwtAuthWrapper
+import kotless.utilities.auth.SecretManager
 import com.auth0.jwt.JWT
 import com.auth0.jwt.algorithms.Algorithm
 import com.auth0.jwt.JWTVerifier
+import kotless.utilities.auth.utils.RsaKeyProviderBuilder
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
-import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 
-class CustomAuthWrapper : AuthWrapper() {
-    override fun getJwtVerifier(): JWTVerifier {
+class CustomJwtAuthWrapper(
+    secretManager: SecretManager
+) : JwtAuthWrapper(
+    usernameAttributeKey = "username", // or "cognito:username", etc.
+    serverSignIssuer = "your-issuer"
+) {
+    private val serverSignAlgorithm by lazy {
+        val serverSignSecret = secretManager.getSecret("SERVER_SIGN_SECRET")
+        Algorithm.HMAC256(serverSignSecret)
+    }
+    
+    override fun jwtVerifier(): JWTVerifier {
         // Return your JWT verifier
+        // Example with HMAC256:
         val algorithm = Algorithm.HMAC256("your-secret")
         return JWT.require(algorithm).build()
+        
+        // Or with RSA256 (like AWS/Google):
+        // val keyProvider = RsaKeyProviderBuilder.build("https://your-jwks-url")
+        // val algorithm = Algorithm.RSA256(keyProvider)
+        // return JWT.require(algorithm).build()
     }
     
-    override fun getServerSignAlgorithm(): Algorithm {
-        return Algorithm.HMAC256("server-secret")
-    }
-    
-    override fun getServerSignJwtVerifier(): JWTVerifier {
-        val algorithm = Algorithm.HMAC256("server-secret")
-        return JWT.require(algorithm).build()
-    }
-    
-    override fun getUserAttributes(username: String): Map<String, String> {
-        // Retrieve user attributes from your user store
-        return mapOf(
-            "email" to "user@example.com",
-            "cognito:username" to username
-        )
+    override fun serverSignAlgorithm(): Algorithm {
+        return serverSignAlgorithm
     }
 }
 
@@ -137,19 +219,33 @@ class CustomAuthWrapper : AuthWrapper() {
 @Configuration
 class CustomAuthConfiguration {
     @Bean
-    fun authWrapper(): AuthWrapper {
-        return CustomAuthWrapper()
+    fun authWrapper(secretManager: SecretManager): AuthWrapper {
+        return CustomJwtAuthWrapper(secretManager)
     }
 }
 ```
 
-Then you can inject it in your services:
-
+2. **Implement AuthWrapper directly** (for non-JWT authentication):
 ```kotlin
-class AuthService(
-    private val authWrapper: AuthWrapper  // Your custom implementation will be injected
-) {
-    // Use authWrapper as normal
+import kotless.utilities.auth.AuthWrapper
+import kotless.utilities.auth.data.AuthContext
+import kotless.utilities.auth.data.AuthContextPayload
+import kotless.utilities.auth.exceptions.AuthException
+import kotless.utilities.common.Either
+
+class CustomAuthWrapper : AuthWrapper {
+    override fun <T> withAuth(token: String, f: (AuthContext) -> T): Either<AuthException, T> {
+        // Your custom authentication logic
+        // Parse token, verify, build AuthContext, etc.
+    }
+    
+    override fun <T> withServerAuth(token: String, f: (AuthContext) -> T): Either<AuthException, T> {
+        // Your custom server authentication logic
+    }
+    
+    override fun buildServerSignToken(server: String, payload: AuthContextPayload): String {
+        // Your custom server token creation logic
+    }
 }
 ```
 
@@ -221,28 +317,6 @@ class AuthService(
 }
 ```
 
-### Error Handling
-
-```kotlin
-import kotless.utilities.auth.exceptions.AuthException
-import kotless.utilities.common.Either
-
-fun handleAuth(token: String): Either<AuthException, String> {
-    return authWrapper.withAuth(token) { authContext ->
-        "Success"
-    }.fold(
-        onLeft = { error ->
-            when (error.statusCode) {
-                401 -> "Token expired"
-                403 -> "Invalid token"
-                else -> "Authentication failed"
-            }
-        },
-        onRight = { result -> result }
-    )
-}
-```
-
 ## Configuration
 
 ### AWS Cognito Setup
@@ -262,15 +336,88 @@ fun handleAuth(token: String): Either<AuthException, String> {
 
 2. Or use environment variables if using a custom implementation
 
-## AuthContext
+### Manual Sign Secret (for ManualAuthWrapper)
+
+1. Create a secret in AWS Secrets Manager:
+   - Name: `MANUAL_SIGN_SECRET`
+   - Value: A secure random string (e.g., 256-bit key)
+
+## AuthContext and AuthContextPayload
+
+### AuthContext
 
 The `AuthContext` data class contains:
 - `authorization`: The original token string
-- `username`: The user's username
-- `email`: The user's email address
-- `server`: Optional server identifier (for server-signed tokens)
+- `server`: Optional server identifier (for server-signed tokens, null for regular tokens)
+- `payload`: `AuthContextPayload` containing user information
 
-You can extend `AuthContext` to include additional fields as needed for your application.
+**Field Order:** `authorization`, `server`, `payload`
+
+### AuthContextPayload
+
+The `AuthContextPayload` data class contains user information extracted from tokens:
+- `username`: The user's username (extracted from token claims)
+
+**Note:** You can extend `AuthContextPayload` to include additional fields (e.g., `email`, `roles`, etc.) as needed for your application. See the `buildAuthContext` method in `JwtAuthWrapper` for where to add custom fields.
+
+**Example Extension:**
+```kotlin
+data class AuthContextPayload(
+    val username: String,
+    val email: String? = null,
+    val roles: List<String> = emptyList()
+    // Add more fields as needed
+)
+```
+
+## Token Handling
+
+### Token Formats
+
+1. **Regular JWT Tokens**: 
+   - Can optionally include "Bearer " prefix (automatically stripped)
+   - Verified using the provider-specific JWT verifier (AWS Cognito, Google OAuth, or Manual)
+   - Username extracted from token claims using `usernameAttributeKey`
+
+2. **Server-Signed Tokens**:
+   - Must start with "SRV." prefix
+   - Created using `buildServerSignToken(server, payload)`
+   - Verified using HMAC256 with secret from `SecretManager`
+   - Username and server extracted from token claims
+
+3. **Manual-Signed Tokens** (ManualAuthWrapper only):
+   - Created using `manualSign(username)`
+   - Verified using HMAC256 with `MANUAL_SIGN_SECRET`
+   - No prefix required
+
+### Token Verification Flow
+
+1. **Server Token Detection**: If token starts with "SRV.":
+   - Removes "SRV." prefix
+   - Verifies using server sign verifier (HMAC256)
+   - Extracts username and server from token claims
+   - Builds `AuthContext` with server attribute
+
+2. **Regular JWT Token**:
+   - Removes "Bearer " prefix if present
+   - Verifies using provider-specific JWT verifier
+   - Extracts username from token claims using `usernameAttributeKey`
+   - Builds `AuthContext` without server attribute
+
+### Token Creation Flow
+
+1. **Server-Signed Token**:
+   - Creates JWT with issuer from `serverSignIssuer`
+   - Adds username claim from `payload.username`
+   - Adds server claim
+   - Signs with HMAC256 using `SERVER_SIGN_SECRET`
+   - Prefixes with "SRV."
+
+2. **Manual-Signed Token** (ManualAuthWrapper only):
+   - Creates JWT with issuer
+   - Adds username claim
+   - Signs with HMAC256 using `MANUAL_SIGN_SECRET`
+   - No prefix
 
 ## Best Practices
 
@@ -279,4 +426,7 @@ You can extend `AuthContext` to include additional fields as needed for your app
 3. **Secret Management**: Never hardcode secrets; always use `SecretManager`
 4. **Server Tokens**: Use server-signed tokens for service-to-service communication
 5. **Token Expiration**: Handle token expiration gracefully (401 status code)
-
+6. **Token Retry**: The implementation includes automatic retry for tokens that aren't ready yet (handles clock skew)
+7. **Lazy Initialization**: JWT verifiers and clients are lazily initialized for better performance
+8. **Payload Extension**: Extend `AuthContextPayload` to include all necessary user information for your application
+9. **Issuer Configuration**: Update `serverSignIssuer` in your implementations (currently "CHANGE_ME")
